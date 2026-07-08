@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>八丈太鼓 ループWAV生成ツール</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif; background: #f5f4f0; color: #1a1a1a; padding: 2rem; }
+  .container { max-width: 640px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 2rem; border: 1px solid #e0deda; }
+  h1 { font-size: 17px; font-weight: 500; margin-bottom: 1.5rem; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  label { font-size: 12px; color: #888; }
+  input, select, textarea { font-family: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; color: #1a1a1a; width: 100%; }
+  input[type=password] { font-family: monospace; }
+  textarea { resize: vertical; line-height: 1.7; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  button { background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 11px 20px; font-size: 14px; cursor: pointer; font-family: inherit; width: 100%; margin-top: 6px; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  #status { font-size: 13px; color: #666; margin-top: 12px; line-height: 1.7; min-height: 20px; white-space: pre-wrap; }
+  audio { width: 100%; margin-top: 12px; display: none; }
+  .note { font-size: 12px; color: #aaa; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🥁 八丈太鼓 ループWAV生成ツール</h1>
+
+  <div class="field">
+    <label>Gemini API キー</label>
+    <input type="password" id="apikey" placeholder="AIza..."/>
+  </div>
+
+  <div class="field">
+    <label>モデル</label>
+    <select id="model">
+      <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-tts（安定版・推奨）</option>
+      <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview（最新）</option>
+      <option value="gemini-2.5-pro-preview-tts">gemini-2.5-pro-tts（高品質）</option>
+    </select>
+  </div>
+
+  <div class="grid2">
+    <div class="field">
+      <label>日本語ボイス</label>
+      <select id="voiceJP">
+        <option value="Kore">Kore（落ち着き）</option>
+        <option value="Aoede">Aoede（明るい）</option>
+        <option value="Puck" selected>Puck（知的）</option>
+        <option value="Charon">Charon（重厚）</option>
+        <option value="Leda">Leda（柔らか）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>英語ボイス</label>
+      <select id="voiceEN">
+        <option value="Puck" selected>Puck</option>
+        <option value="Charon">Charon</option>
+        <option value="Kore">Kore</option>
+        <option value="Aoede">Aoede</option>
+        <option value="Fenrir">Fenrir</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>日本語テキスト</label>
+    <textarea id="textJP" rows="3">まもなく、八丈島の郷土芸能・八丈太鼓の演奏が始まります。
+このあと、どなたでもご参加いただける体験コーナーもございます。
+どうぞお気軽にお立ち寄りください。</textarea>
+  </div>
+
+  <div class="field">
+    <label>英語テキスト</label>
+    <textarea id="textEN" rows="3">A live Hachijo Taiko performance will begin shortly.
+A taiko experience session is also open to everyone.
+Please feel free to join us.</textarea>
+  </div>
+
+  <div class="field">
+    <label>スタイル指示（英語）</label>
+    <textarea id="style" rows="2">Speak in a calm, warm, and welcoming tone. Use gentle pacing with natural pauses. Suitable for a cultural outdoor event announcement.</textarea>
+  </div>
+
+  <div class="grid2">
+    <div class="field">
+      <label>JP後の無音（秒）</label>
+      <input type="number" id="silJP" value="2" min="0" max="10" step="0.5"/>
+    </div>
+    <div class="field">
+      <label>EN後の無音（秒）</label>
+      <input type="number" id="silEN" value="3" min="0" max="10" step="0.5"/>
+    </div>
+  </div>
+
+  <button id="genBtn" onclick="generate()">ループWAVを生成してダウンロード</button>
+  <div id="status"></div>
+  <audio id="player" controls></audio>
+  <p class="note">※ このファイルをブラウザで直接開いて使用してください</p>
+</div>
+
+<script>
+const SAMPLE_RATE = 24000;
+
+function makeWavHeader(dataLen) {
+  const buf = new ArrayBuffer(44);
+  const v = new DataView(buf);
+  const w = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  w(0,"RIFF"); v.setUint32(4,36+dataLen,true);
+  w(8,"WAVE"); w(12,"fmt ");
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,SAMPLE_RATE,true); v.setUint32(28,SAMPLE_RATE*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,"data"); v.setUint32(40,dataLen,true);
+  return new Uint8Array(buf);
+}
+
+function makeSilence(sec) {
+  return new Uint8Array(Math.floor(SAMPLE_RATE * sec) * 2);
+}
+
+async function fetchTTS(apiKey, model, text, voice, style) {
+  const fullText = style ? style + "\n\n" + text : text;
+  const body = {
+    contents: [{ parts: [{ text: fullText }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+    }
+  };
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
+  const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!b64) throw new Error("音声データが返ってきませんでした");
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+async function generate() {
+  const apiKey  = document.getElementById("apikey").value.trim();
+  const model   = document.getElementById("model").value;
+  const textJP  = document.getElementById("textJP").value.trim();
+  const textEN  = document.getElementById("textEN").value.trim();
+  const voiceJP = document.getElementById("voiceJP").value;
+  const voiceEN = document.getElementById("voiceEN").value;
+  const style   = document.getElementById("style").value.trim();
+  const silJP   = parseFloat(document.getElementById("silJP").value) || 2;
+  const silEN   = parseFloat(document.getElementById("silEN").value) || 3;
+  const status  = document.getElementById("status");
+  const btn     = document.getElementById("genBtn");
+  const player  = document.getElementById("player");
+
+  if (!apiKey) { status.textContent = "APIキーを入力してください"; return; }
+  btn.disabled = true;
+  status.style.color = "#666";
+
+  try {
+    status.textContent = "① 日本語音声を生成中...";
+    const pcmJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
+
+    status.textContent = "② 英語音声を生成中...";
+    const pcmEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
+
+    status.textContent = "③ WAVファイルを結合中...";
+    const silA = makeSilence(silJP);
+    const silB = makeSilence(silEN);
+    const totalLen = pcmJP.length + silA.length + pcmEN.length + silB.length;
+    const header = makeWavHeader(totalLen);
+    const wav = new Uint8Array(44 + totalLen);
+    wav.set(header, 0);
+    wav.set(pcmJP, 44);
+    wav.set(silA,  44 + pcmJP.length);
+    wav.set(pcmEN, 44 + pcmJP.length + silA.length);
+    wav.set(silB,  44 + pcmJP.length + silA.length + pcmEN.length);
+
+    const blob = new Blob([wav], { type: "audio/wav" });
+    const url  = URL.createObjectURL(blob);
+    player.src = url;
+    player.style.display = "block";
+    player.play();
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `loop_taiko_${voiceJP}_${voiceEN}.wav`;
+    a.click();
+
+    const durJP = (pcmJP.length / 2 / SAMPLE_RATE).toFixed(1);
+    const durEN = (pcmEN.length / 2 / SAMPLE_RATE).toFixed(1);
+    const total = (totalLen / 2 / SAMPLE_RATE).toFixed(1);
+    status.style.color = "#2a7a4b";
+    status.textContent = `完成！\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒／ループ`;
+  } catch(e) {
+    status.style.color = "#c0392b";
+    status.textContent = `エラー: ${e.message}`;
+  }
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
