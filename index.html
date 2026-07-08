@@ -34,9 +34,8 @@
   <div class="field">
     <label>モデル</label>
     <select id="model">
-      <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview（最新）</option>
-      <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-tts（安定版・推奨）</option>
-      <option value="gemini-2.5-pro-preview-tts">gemini-2.5-pro-tts（高品質）</option>
+      <option value="gemini-2.5-flash" selected>gemini-2.5-flash（音声出力推奨）</option>
+      <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
     </select>
   </div>
 
@@ -48,7 +47,7 @@
         <option value="Charon">Charon（重厚）</option>
         <option value="Kore">Kore（落ち着き）</option>
         <option value="Aoede">Aoede（明るい）</option>
-        <option value="Leda">Leda（柔らか）</option>
+        <option value="Fenrir">Fenrir（力強い）</option>
       </select>
     </div>
     <div class="field">
@@ -58,7 +57,7 @@
         <option value="Charon">Charon</option>
         <option value="Kore">Kore</option>
         <option value="Aoede">Aoede</option>
-        <option value="Leda">Leda</option>
+        <option value="Fenrir">Fenrir</option>
       </select>
     </div>
   </div>
@@ -100,7 +99,35 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
+// Gemini TTSは通常24kHzで出力されるため、デコード用に定義
+const GEMINI_SAMPLE_RATE = 24000; 
 const OUTPUT_SAMPLE_RATE = 44100;
+
+// Raw PCMのバイナリデータにWAVヘッダーを付与してブラウザで読めるようにする関数
+function wrapRawPcmToWav(pcmBuffer, sampleRate) {
+  const buffer = new ArrayBuffer(44 + pcmBuffer.byteLength);
+  const view = new DataView(buffer);
+  
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + pcmBuffer.byteLength, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // Linear PCM
+  view.setUint16(22, 1, true); // モノラル
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // Byte rate
+  view.setUint16(32, 2, true); // Block align
+  view.setUint16(34, 16, true); // 16bit
+  writeString(view, 36, 'data');
+  view.setUint32(40, pcmBuffer.byteLength, true);
+  
+  const pcmView = new Uint8Array(pcmBuffer);
+  const wavView = new Uint8Array(buffer, 44);
+  wavView.set(pcmView);
+  
+  return buffer;
+}
 
 function createWavFile(audioBuffer) {
   const numChannels = 1; 
@@ -158,7 +185,7 @@ async function fetchTTS(apiKey, model, text, voice, style) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
   const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!b64) throw new Error("音声データが返ってきませんでした");
+  if (!b64) throw new Error("音声データが返ってきませんでした。指示やキーを確認してください。");
   
   const bin = atob(b64);
   const arr = new Uint8Array(bin.length);
@@ -188,12 +215,16 @@ async function generate() {
 
   try {
     status.textContent = "① 日本語音声を生成中...";
-    const bufJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
-    const audioBufJP = await audioCtx.decodeAudioData(bufJP);
+    const rawBufJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
+    // Raw PCMを臨時WAVにラップしてからデコード
+    const wavBufJP = wrapRawPcmToWav(rawBufJP, GEMINI_SAMPLE_RATE);
+    const audioBufJP = await audioCtx.decodeAudioData(wavBufJP);
 
     status.textContent = "② 英語音声を生成中...";
-    const bufEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
-    const audioBufEN = await audioCtx.decodeAudioData(bufEN);
+    const rawBufEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
+    // Raw PCMを臨時WAVにラップしてからデコード
+    const wavBufEN = wrapRawPcmToWav(rawBufEN, GEMINI_SAMPLE_RATE);
+    const audioBufEN = await audioCtx.decodeAudioData(wavBufEN);
 
     status.textContent = "③ WAVファイルを結合中...";
     
@@ -219,14 +250,14 @@ async function generate() {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `loop_taiko_${voiceJP}_${voiceEN}.wav`;
+    a.download = `announcement_${voiceJP}.wav`;
     a.click();
 
     const durJP = audioBufJP.duration.toFixed(1);
     const durEN = audioBufEN.duration.toFixed(1);
     const total = finalBuffer.duration.toFixed(1);
     status.style.color = "#2a7a4b";
-    status.textContent = `完成！\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒／ループ`;
+    status.textContent = `完成！\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒のWAVを出力しました。`;
   } catch(e) {
     status.style.color = "#c0392b";
     status.textContent = `エラー: ${e.message}`;
