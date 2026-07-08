@@ -24,7 +24,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>🥁サンプラー用のアナウンス文生成ツール</h1>
+  <h1>🥁 サンプラー用のアナウンス文生成ツール</h1>
 
   <div class="field">
     <label>Gemini API キー</label>
@@ -99,11 +99,9 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
-// Gemini TTSは通常24kHzで出力されるため、デコード用に定義
 const GEMINI_SAMPLE_RATE = 24000; 
 const OUTPUT_SAMPLE_RATE = 44100;
 
-// Raw PCMのバイナリデータにWAVヘッダーを付与してブラウザで読めるようにする関数
 function wrapRawPcmToWav(pcmBuffer, sampleRate) {
   const buffer = new ArrayBuffer(44 + pcmBuffer.byteLength);
   const view = new DataView(buffer);
@@ -113,12 +111,12 @@ function wrapRawPcmToWav(pcmBuffer, sampleRate) {
   writeString(view, 8, 'WAVE');
   writeString(view, 12, 'fmt ');
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // Linear PCM
-  view.setUint16(22, 1, true); // モノラル
+  view.setUint16(20, 1, true); 
+  view.setUint16(22, 1, true); 
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // Byte rate
-  view.setUint16(32, 2, true); // Block align
-  view.setUint16(34, 16, true); // 16bit
+  view.setUint32(28, sampleRate * 2, true); 
+  view.setUint16(32, 2, true); 
+  view.setUint16(34, 16, true); 
   writeString(view, 36, 'data');
   view.setUint32(40, pcmBuffer.byteLength, true);
   
@@ -216,13 +214,11 @@ async function generate() {
   try {
     status.textContent = "① 日本語音声を生成中...";
     const rawBufJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
-    // Raw PCMを臨時WAVにラップしてからデコード
     const wavBufJP = wrapRawPcmToWav(rawBufJP, GEMINI_SAMPLE_RATE);
     const audioBufJP = await audioCtx.decodeAudioData(wavBufJP);
 
     status.textContent = "② 英語音声を生成中...";
     const rawBufEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
-    // Raw PCMを臨時WAVにラップしてからデコード
     const wavBufEN = wrapRawPcmToWav(rawBufEN, GEMINI_SAMPLE_RATE);
     const audioBufEN = await audioCtx.decodeAudioData(wavBufEN);
 
