@@ -1,269 +1,234 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>サンプラー用のアナウンス文生成ツール</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif; background: #f5f4f0; color: #1a1a1a; padding: 2rem; }
-  .container { max-width: 640px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 2rem; border: 1px solid #e0deda; }
-  h1 { font-size: 17px; font-weight: 500; margin-bottom: 1.5rem; }
-  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-  label { font-size: 12px; color: #888; }
-  input, select, textarea { font-family: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; color: #1a1a1a; width: 100%; }
-  input[type=password] { font-family: monospace; }
-  textarea { resize: vertical; line-height: 1.7; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  button { background: #1a1a1a; color: #fff; border: none; border-radius: 8px; padding: 11px 20px; font-size: 14px; cursor: pointer; font-family: inherit; width: 100%; margin-top: 6px; }
-  button:disabled { background: #aaa; cursor: not-allowed; }
-  #status { font-size: 13px; color: #666; margin-top: 12px; line-height: 1.7; min-height: 20px; white-space: pre-wrap; }
-  audio { width: 100%; margin-top: 12px; display: none; }
-  .note { font-size: 12px; color: #aaa; margin-top: 10px; }
-</style>
+    <meta charset="UTF-8">
+    <title>Gemini TTS ループWAV生成ツール</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 20px auto; padding: 0 20px; line-height: 1.6; }
+        label { display: block; margin-top: 15px; font-weight: bold; }
+        input[type="text"], textarea, select { width: 100%; padding: 8px; box-sizing: border-box; }
+        textarea { height: 100px; }
+        .row { display: flex; gap: 10px; margin-top: 10px; }
+        .col { flex: 1; }
+        button { margin-top: 20px; padding: 12px 24px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:disabled { background: #ccc; }
+        #status { margin-top: 15px; font-weight: bold; color: #d9534f; }
+        audio { margin-top: 20px; width: 100%; }
+    </style>
 </head>
 <body>
-<div class="container">
-  <h1>🥁 サンプラー用のアナウンス文生成ツール</h1>
 
-  <div class="field">
-    <label>Gemini API キー</label>
-    <input type="password" id="apikey" placeholder="AIza..."/>
-  </div>
+    <h2>Gemini TTS ループWAV生成ツール</h2>
+    
+    <label for="apiKey">Gemini API Key:</label>
+    <input type="text" id="apiKey" placeholder="AIzaSy...">
 
-  <div class="field">
-    <label>モデル</label>
-    <select id="model">
-<option value="gemini-2.5-flash" selected>gemini-2.5-flash（推奨・最も安定）</option>
-<option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp（軽量版）</option>
-<option value="gemini-1.5-pro">gemini-1.5-pro（高品質）</option>
+    <label for="modelSelect">使用モデル:</label>
+    <select id="modelSelect">
+        <option value="gemini-2.0-flash">gemini-2.0-flash (推奨・高速)</option>
+        <option value="gemini-2.0-pro">gemini-2.0-pro (高品質)</option>
     </select>
-  </div>
 
-  <div class="grid2">
-    <div class="field">
-      <label>日本語ボイス</label>
-      <select id="voiceJP">
-        <option value="Puck" selected>Puck（知的）</option>
-        <option value="Charon">Charon（重厚）</option>
-        <option value="Kore">Kore（落ち着き）</option>
-        <option value="Aoede">Aoede（明るい）</option>
-        <option value="Fenrir">Fenrir（力強い）</option>
-      </select>
+    <div class="row">
+        <div class="col">
+            <label for="textJP">日本語テキスト (JP):</label>
+            <textarea id="textJP">本日は「たたいてみよう八丈太鼓」にご参加いただき、誠にありがとうございます。皆様からいただくご感想やご意見は、今後のワークショップやイベントをより良いものにしていくための大切な参考となります。お手元のアンケートへのご協力をお願いいたします。ご記入いただいたアンケートは、受付までお渡しください。また、ニュースレターでは最新情報をお届けしています。ご興味のある方はぜひご登録ください。本日は誠にありがとうございました。</textarea>
+            <label for="silenceJP">後ろに挟む無音 (秒):</label>
+            <input type="number" id="silenceJP" value="2" min="0">
+        </div>
+        <div class="col">
+            <label for="textEN">英語テキスト (EN):</label>
+            <textarea id="textEN">Thank you very much for joining “Let’s Play Hachijo Taiko” today. Your feedback is very important to us. We would appreciate it if you could take a moment to complete the questionnaire and return it to the reception desk. Thank you again for joining us today.</textarea>
+            <label for="silenceEN">後ろに挟む無音 (秒):</label>
+            <input type="number" id="silenceEN" value="3" min="0">
+        </div>
     </div>
-    <div class="field">
-      <label>英語ボイス</label>
-      <select id="voiceEN">
-        <option value="Puck" selected>Puck</option>
+
+    <label for="voiceName">音声モデルの声種 (Voice Name):</label>
+    <select id="voiceName">
+        <option value="Puck">Puck (標準的な声)</option>
         <option value="Charon">Charon</option>
         <option value="Kore">Kore</option>
-        <option value="Aoede">Aoede</option>
         <option value="Fenrir">Fenrir</option>
-      </select>
-    </div>
-  </div>
+        <option value="Aoede">Aoede</option>
+    </select>
 
-  <div class="field">
-    <label>日本語テキスト</label>
-    <textarea id="textJP" rows="3">まもなく、八丈島の郷土芸能・八丈太鼓の演奏が始まります。
-このあと、どなたでもご参加いただける体験コーナーもございます。
-どうぞお気軽にお立ち寄りください。</textarea>
-  </div>
-
-  <div class="field">
-    <label>英語テキスト</label>
-    <textarea id="textEN" rows="3">A live Hachijo Taiko performance will begin shortly.
-A taiko experience session is also open to everyone.
-Please feel free to join us.</textarea>
-  </div>
-
-  <div class="field">
-    <label>スタイル指示（英語）</label>
-    <textarea id="style" rows="2">Speak in a calm, warm, and welcoming tone. Use gentle pacing with natural pauses. Suitable for a cultural outdoor event announcement.</textarea>
-  </div>
-
-  <div class="grid2">
-    <div class="field">
-      <label>JP後の無音（秒）</label>
-      <input type="number" id="silJP" value="2" min="0" max="10" step="0.5"/>
-    </div>
-    <div class="field">
-      <label>EN後の無音（秒）</label>
-      <input type="number" id="silEN" value="3" min="0" max="10" step="0.5"/>
-    </div>
-  </div>
-
-  <button id="genBtn" onclick="generate()">ループWAVを生成してダウンロード</button>
-  <div id="status"></div>
-  <audio id="player" controls></audio>
-  <p class="note">※ このファイルをブラウザで直接開いて使用してください</p>
-</div>
-
-<script>
-const GEMINI_SAMPLE_RATE = 24000; 
-const OUTPUT_SAMPLE_RATE = 44100;
-
-function wrapRawPcmToWav(pcmBuffer, sampleRate) {
-  const buffer = new ArrayBuffer(44 + pcmBuffer.byteLength);
-  const view = new DataView(buffer);
-  
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + pcmBuffer.byteLength, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); 
-  view.setUint16(22, 1, true); 
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); 
-  view.setUint16(32, 2, true); 
-  view.setUint16(34, 16, true); 
-  writeString(view, 36, 'data');
-  view.setUint32(40, pcmBuffer.byteLength, true);
-  
-  const pcmView = new Uint8Array(pcmBuffer);
-  const wavView = new Uint8Array(buffer, 44);
-  wavView.set(pcmView);
-  
-  return buffer;
-}
-
-function createWavFile(audioBuffer) {
-  const numChannels = 1; 
-  const sampleRate = OUTPUT_SAMPLE_RATE;
-  const format = 1; 
-  const bitDepth = 16;
-  
-  const resultData = audioBuffer.getChannelData(0);
-  const buffer = new ArrayBuffer(44 + resultData.length * 2);
-  const view = new DataView(buffer);
-  
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + resultData.length * 2, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, format, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true);
-  view.setUint16(32, numChannels * (bitDepth / 8), true);
-  view.setUint16(34, bitDepth, true);
-  writeString(view, 36, 'data');
-  view.setUint32(40, resultData.length * 2, true);
-  
-  let offset = 44;
-  for (let i = 0; i < resultData.length; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, resultData[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  
-  return buffer;
-}
-
-function writeString(view, offset, string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
-}
-
-async function fetchTTS(apiKey, model, text, voice, style) {
-  const fullText = style ? style + "\n\n" + text : text;
-  const body = {
-    contents: [{ parts: [{ text: fullText }] }],
-    generationConfig: {
-      responseModalities: ["AUDIO"],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
-    }
-  };
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-  );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
-  const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!b64) throw new Error("音声データが返ってきませんでした。指示やキーを確認してください。");
-  
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr.buffer;
-}
-
-async function generate() {
-  const apiKey  = document.getElementById("apikey").value.trim();
-  const model   = document.getElementById("model").value;
-  const textJP  = document.getElementById("textJP").value.trim();
-  const textEN  = document.getElementById("textEN").value.trim();
-  const voiceJP = document.getElementById("voiceJP").value;
-  const voiceEN = document.getElementById("voiceEN").value;
-  const style   = document.getElementById("style").value.trim();
-  const silJP   = parseFloat(document.getElementById("silJP").value) || 2;
-  const silEN   = parseFloat(document.getElementById("silEN").value) || 3;
-  const status  = document.getElementById("status");
-  const btn     = document.getElementById("genBtn");
-  const player  = document.getElementById("player");
-
-  if (!apiKey) { status.textContent = "APIキーを入力してください"; return; }
-  btn.disabled = true;
-  status.style.color = "#666";
-
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: OUTPUT_SAMPLE_RATE });
-
-  try {
-    status.textContent = "① 日本語音声を生成中...";
-    const rawBufJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
-    const wavBufJP = wrapRawPcmToWav(rawBufJP, GEMINI_SAMPLE_RATE);
-    const audioBufJP = await audioCtx.decodeAudioData(wavBufJP);
-
-    status.textContent = "② 英語音声を生成中...";
-    const rawBufEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
-    const wavBufEN = wrapRawPcmToWav(rawBufEN, GEMINI_SAMPLE_RATE);
-    const audioBufEN = await audioCtx.decodeAudioData(wavBufEN);
-
-    status.textContent = "③ WAVファイルを結合中...";
+    <button id="generateBtn">WAVファイルを生成する</button>
     
-    const samplesJP = audioBufJP.length;
-    const samplesEN = audioBufEN.length;
-    const samplesSilJP = Math.floor(OUTPUT_SAMPLE_RATE * silJP);
-    const samplesSilEN = Math.floor(OUTPUT_SAMPLE_RATE * silEN);
-    const totalSamples = samplesJP + samplesSilJP + samplesEN + samplesSilEN;
-    
-    const finalBuffer = audioCtx.createBuffer(1, totalSamples, OUTPUT_SAMPLE_RATE);
-    const finalData = finalBuffer.getChannelData(0);
-    
-    finalData.set(audioBufJP.getChannelData(0), 0);
-    finalData.set(audioBufEN.getChannelData(0), samplesJP + samplesSilJP);
-    
-    const wavBuffer = createWavFile(finalBuffer);
+    <div id="status"></div>
+    <audio id="audioPreview" controls></audio>
 
-    const blob = new Blob([wavBuffer], { type: "audio/wav" });
-    const url  = URL.createObjectURL(blob);
-    player.src = url;
-    player.style.display = "block";
-    player.play();
+    <script>
+        document.getElementById('generateBtn').addEventListener('click', async () => {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const model = document.getElementById('modelSelect').value;
+            const textJP = document.getElementById('textJP').value.trim();
+            const silenceJP = parseFloat(document.getElementById('silenceJP').value) || 0;
+            const textEN = document.getElementById('textEN').value.trim();
+            const silenceEN = parseFloat(document.getElementById('silenceEN').value) || 0;
+            const voiceName = document.getElementById('voiceName').value;
+            
+            const statusDiv = document.getElementById('status');
+            const generateBtn = document.getElementById('generateBtn');
+            
+            if (!apiKey) {
+                statusDiv.innerText = "エラー: APIキーを入力してください。";
+                return;
+            }
+            
+            statusDiv.innerText = "音声生成中...";
+            generateBtn.disabled = true;
+            
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+                
+                // 1. 日本語音声の取得とデコード
+                statusDiv.innerText = "日本語音声を生成中...";
+                const bufferJP = await fetchGeminiTTS(apiKey, model, textJP, voiceName);
+                const audioBufferJP = await audioCtx.decodeAudioData(bufferJP);
+                
+                // 2. 英語音声の取得とデコード
+                statusDiv.innerText = "英語音声を生成中...";
+                const bufferEN = await fetchGeminiTTS(apiKey, model, textEN, voiceName);
+                const audioBufferEN = await audioCtx.decodeAudioData(bufferEN);
+                
+                // 3. 結合処理 (JP + 無音 + EN + 無音)
+                statusDiv.innerText = "音声データを結合中...";
+                const sampleRate = 44100;
+                const totalDuration = audioBufferJP.duration + silenceJP + audioBufferEN.duration + silenceEN;
+                const totalSamples = Math.floor(totalDuration * sampleRate);
+                
+                const finalBuffer = audioCtx.createBuffer(1, totalSamples, sampleRate);
+                const channelData = finalBuffer.getChannelData(0);
+                
+                let offset = 0;
+                
+                // JPコピー
+                channelData.set(audioBufferJP.getChannelData(0), offset);
+                offset += audioBufferJP.length;
+                
+                // JP無音スキップ
+                offset += Math.floor(silenceJP * sampleRate);
+                
+                // ENコピー
+                channelData.set(audioBufferEN.getChannelData(0), offset);
+                offset += audioBufferEN.length;
+                
+                // 4. WAVバイナリに変換
+                const wavBytes = bufferToWav(channelData, sampleRate);
+                
+                // 5. 出力
+                const blob = new Blob([wavBytes], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+                
+                const audioPreview = document.getElementById('audioPreview');
+                audioPreview.src = url;
+                
+                statusDiv.innerHTML = `成功！ 総再生時間: ${totalDuration.toFixed(1)} 秒 (ループ1周)。<br><a href="${url}" download="hachijo_taiko_announcement.wav" style="color:#007bff; font-weight:bold;">[ここをクリックしてWAVをダウンロード]</a>`;
+                
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = "エラーが発生しました: " + error.message;
+            } finally {
+                generateBtn.disabled = false;
+            }
+        });
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `announcement_${voiceJP}.wav`;
-    a.click();
+        // Gemini APIから音声を叩き出す関数 (最新2.0仕様)
+        async function fetchGeminiTTS(apiKey, model, text, voiceName) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: text }] }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: {
+                                prebuiltVoiceConfig: {
+                                    voiceName: voiceName
+                                }
+                            }
+                        }
+                    }
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error.message);
+            }
+            
+            // APIから返ってきたbase64音声データを探して取り出す
+            const candidate = data.candidates?.[0];
+            const part = candidate?.content?.parts?.find(p => p.inlineData || p.fileData);
+            
+            if (!part || !part.inlineData || !part.inlineData.data) {
+                throw new Error("APIから音声データが返されませんでした。モデルか設定を確認してください。");
+            }
+            
+            // base64をArrayBufferに変換
+            const binaryString = atob(part.inlineData.data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
 
-    const durJP = audioBufJP.duration.toFixed(1);
-    const durEN = audioBufEN.duration.toFixed(1);
-    const total = finalBuffer.duration.toFixed(1);
-    status.style.color = "#2a7a4b";
-    status.textContent = `完成！\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒のWAVを出力しました。`;
-  } catch(e) {
-    status.style.color = "#c0392b";
-    status.textContent = `エラー: ${e.message}`;
-    console.error(e);
-  } finally {
-    audioCtx.close();
-    btn.disabled = false;
-  }
-}
-</script>
+        // Float32の波形データを標準的な16bit PCMのWAVフォーマットに変換する関数
+        function bufferToWav(buffer, sampleRate) {
+            const bufferLength = buffer.length;
+            const wavBuffer = new ArrayBuffer(44 + bufferLength * 2);
+            const view = new DataView(wavBuffer);
+            
+            /* RIFF identifier */
+            writeString(view, 0, 'RIFF');
+            /* file length */
+            view.setUint32(4, 36 + bufferLength * 2, true);
+            /* RIFF type */
+            writeString(view, 8, 'WAVE');
+            /* format chunk identifier */
+            writeString(view, 12, 'fmt ');
+            /* format chunk length */
+            view.setUint32(16, 16, true);
+            /* sample format (raw) */
+            view.setUint16(20, 1, true);
+            /* channel count */
+            view.setUint16(22, 1, true);
+            /* sample rate */
+            view.setUint32(24, sampleRate, true);
+            /* byte rate (sample rate * block align) */
+            view.setUint32(28, sampleRate * 2, true);
+            /* block align (channel count * bytes per sample) */
+            view.setUint16(32, 2, true);
+            /* bits per sample */
+            view.setUint16(34, 16, true);
+            /* data chunk identifier */
+            writeString(view, 36, 'data');
+            /* data chunk length */
+            view.setUint32(40, bufferLength * 2, true);
+            
+            // 浮動小数を16bit整数に変換して書き込み
+            let index = 44;
+            for (let i = 0; i < bufferLength; i++) {
+                let sample = Math.max(-1, Math.min(1, buffer[i]));
+                sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                view.setInt16(index, sample, true);
+                index += 2;
+            }
+            
+            return wavBuffer;
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+    </script>
 </body>
 </html>
