@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>八丈太鼓 ループWAV生成ツール</title>
+<title>サンプラー用のアナウンス文生成ツール</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif; background: #f5f4f0; color: #1a1a1a; padding: 2rem; }
@@ -34,8 +34,8 @@
   <div class="field">
     <label>モデル</label>
     <select id="model">
-      <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-tts（安定版・推奨）</option>
       <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview（最新）</option>
+      <option value="gemini-2.5-flash-preview-tts">gemini-2.5-flash-tts（安定版・推奨）</option>
       <option value="gemini-2.5-pro-preview-tts">gemini-2.5-pro-tts（高品質）</option>
     </select>
   </div>
@@ -44,10 +44,10 @@
     <div class="field">
       <label>日本語ボイス</label>
       <select id="voiceJP">
-        <option value="Kore">Kore（落ち着き）</option>
-        <option value="Aoede">Aoede（明るい）</option>
         <option value="Puck" selected>Puck（知的）</option>
         <option value="Charon">Charon（重厚）</option>
+        <option value="Kore">Kore（落ち着き）</option>
+        <option value="Aoede">Aoede（明るい）</option>
         <option value="Leda">Leda（柔らか）</option>
       </select>
     </div>
@@ -58,7 +58,7 @@
         <option value="Charon">Charon</option>
         <option value="Kore">Kore</option>
         <option value="Aoede">Aoede</option>
-        <option value="Fenrir">Fenrir</option>
+        <option value="Leda">Leda</option>
       </select>
     </div>
   </div>
@@ -100,47 +100,32 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
-// サンプラーで扱いやすい標準的な44.1kHzで出力します
 const OUTPUT_SAMPLE_RATE = 44100;
 
 function createWavFile(audioBuffer) {
-  const numChannels = 1; // モノラル
+  const numChannels = 1; 
   const sampleRate = OUTPUT_SAMPLE_RATE;
-  const format = 1; // Linear PCM
+  const format = 1; 
   const bitDepth = 16;
   
   const resultData = audioBuffer.getChannelData(0);
   const buffer = new ArrayBuffer(44 + resultData.length * 2);
   const view = new DataView(buffer);
   
-  /* RIFF identifier */
   writeString(view, 0, 'RIFF');
-  /* file length */
   view.setUint32(4, 36 + resultData.length * 2, true);
-  /* RIFF type */
   writeString(view, 8, 'WAVE');
-  /* format chunk identifier */
   writeString(view, 12, 'fmt ');
-  /* format chunk length */
   view.setUint32(16, 16, true);
-  /* sample format (raw) */
   view.setUint16(20, format, true);
-  /* channel count */
   view.setUint16(22, numChannels, true);
-  /* sample rate */
   view.setUint32(24, sampleRate, true);
-  /* byte rate (sample rate * block align) */
   view.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true);
-  /* block align (channel count * bytes per sample) */
   view.setUint16(32, numChannels * (bitDepth / 8), true);
-  /* bits per sample */
   view.setUint16(34, bitDepth, true);
-  /* data chunk identifier */
   writeString(view, 36, 'data');
-  /* data chunk length */
   view.setUint32(40, resultData.length * 2, true);
   
-  // PCMデータの書き込み（Float32からInt16へ変換）
   let offset = 44;
   for (let i = 0; i < resultData.length; i++, offset += 2) {
     let s = Math.max(-1, Math.min(1, resultData[i]));
@@ -175,7 +160,6 @@ async function fetchTTS(apiKey, model, text, voice, style) {
   const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   if (!b64) throw new Error("音声データが返ってきませんでした");
   
-  // Base64からバイナリ（ArrayBuffer）に変換
   const bin = atob(b64);
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -200,7 +184,6 @@ async function generate() {
   btn.disabled = true;
   status.style.color = "#666";
 
-  // Web Audio Contextの生成（出力レート固定）
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: OUTPUT_SAMPLE_RATE });
 
   try {
@@ -214,22 +197,18 @@ async function generate() {
 
     status.textContent = "③ WAVファイルを結合中...";
     
-    // サンプル数の計算
     const samplesJP = audioBufJP.length;
     const samplesEN = audioBufEN.length;
     const samplesSilJP = Math.floor(OUTPUT_SAMPLE_RATE * silJP);
     const samplesSilEN = Math.floor(OUTPUT_SAMPLE_RATE * silEN);
     const totalSamples = samplesJP + samplesSilJP + samplesEN + samplesSilEN;
     
-    // 結合用の新しいAudioBufferを作成
     const finalBuffer = audioCtx.createBuffer(1, totalSamples, OUTPUT_SAMPLE_RATE);
     const finalData = finalBuffer.getChannelData(0);
     
-    // 順に流し込む（無音部分は最初から0で初期化されているので飛ばすだけでOK）
     finalData.set(audioBufJP.getChannelData(0), 0);
     finalData.set(audioBufEN.getChannelData(0), samplesJP + samplesSilJP);
     
-    // WAVバイナリの生成
     const wavBuffer = createWavFile(finalBuffer);
 
     const blob = new Blob([wavBuffer], { type: "audio/wav" });
