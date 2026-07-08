@@ -100,23 +100,60 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
-const SAMPLE_RATE = 24000;
+// サンプラーで扱いやすい標準的な44.1kHzで出力します
+const OUTPUT_SAMPLE_RATE = 44100;
 
-function makeWavHeader(dataLen) {
-  const buf = new ArrayBuffer(44);
-  const v = new DataView(buf);
-  const w = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
-  w(0,"RIFF"); v.setUint32(4,36+dataLen,true);
-  w(8,"WAVE"); w(12,"fmt ");
-  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
-  v.setUint32(24,SAMPLE_RATE,true); v.setUint32(28,SAMPLE_RATE*2,true);
-  v.setUint16(32,2,true); v.setUint16(34,16,true);
-  w(36,"data"); v.setUint32(40,dataLen,true);
-  return new Uint8Array(buf);
+function createWavFile(audioBuffer) {
+  const numChannels = 1; // モノラル
+  const sampleRate = OUTPUT_SAMPLE_RATE;
+  const format = 1; // Linear PCM
+  const bitDepth = 16;
+  
+  const resultData = audioBuffer.getChannelData(0);
+  const buffer = new ArrayBuffer(44 + resultData.length * 2);
+  const view = new DataView(buffer);
+  
+  /* RIFF identifier */
+  writeString(view, 0, 'RIFF');
+  /* file length */
+  view.setUint32(4, 36 + resultData.length * 2, true);
+  /* RIFF type */
+  writeString(view, 8, 'WAVE');
+  /* format chunk identifier */
+  writeString(view, 12, 'fmt ');
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format (raw) */
+  view.setUint16(20, format, true);
+  /* channel count */
+  view.setUint16(22, numChannels, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sample rate * block align) */
+  view.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, numChannels * (bitDepth / 8), true);
+  /* bits per sample */
+  view.setUint16(34, bitDepth, true);
+  /* data chunk identifier */
+  writeString(view, 36, 'data');
+  /* data chunk length */
+  view.setUint32(40, resultData.length * 2, true);
+  
+  // PCMデータの書き込み（Float32からInt16へ変換）
+  let offset = 44;
+  for (let i = 0; i < resultData.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, resultData[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  
+  return buffer;
 }
 
-function makeSilence(sec) {
-  return new Uint8Array(Math.floor(SAMPLE_RATE * sec) * 2);
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
 }
 
 async function fetchTTS(apiKey, model, text, voice, style) {
@@ -137,10 +174,12 @@ async function fetchTTS(apiKey, model, text, voice, style) {
   if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
   const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   if (!b64) throw new Error("音声データが返ってきませんでした");
+  
+  // Base64からバイナリ（ArrayBuffer）に変換
   const bin = atob(b64);
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr;
+  return arr.buffer;
 }
 
 async function generate() {
@@ -161,26 +200,39 @@ async function generate() {
   btn.disabled = true;
   status.style.color = "#666";
 
+  // Web Audio Contextの生成（出力レート固定）
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: OUTPUT_SAMPLE_RATE });
+
   try {
     status.textContent = "① 日本語音声を生成中...";
-    const pcmJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
+    const bufJP = await fetchTTS(apiKey, model, textJP, voiceJP, style);
+    const audioBufJP = await audioCtx.decodeAudioData(bufJP);
 
     status.textContent = "② 英語音声を生成中...";
-    const pcmEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
+    const bufEN = await fetchTTS(apiKey, model, textEN, voiceEN, style);
+    const audioBufEN = await audioCtx.decodeAudioData(bufEN);
 
     status.textContent = "③ WAVファイルを結合中...";
-    const silA = makeSilence(silJP);
-    const silB = makeSilence(silEN);
-    const totalLen = pcmJP.length + silA.length + pcmEN.length + silB.length;
-    const header = makeWavHeader(totalLen);
-    const wav = new Uint8Array(44 + totalLen);
-    wav.set(header, 0);
-    wav.set(pcmJP, 44);
-    wav.set(silA,  44 + pcmJP.length);
-    wav.set(pcmEN, 44 + pcmJP.length + silA.length);
-    wav.set(silB,  44 + pcmJP.length + silA.length + pcmEN.length);
+    
+    // サンプル数の計算
+    const samplesJP = audioBufJP.length;
+    const samplesEN = audioBufEN.length;
+    const samplesSilJP = Math.floor(OUTPUT_SAMPLE_RATE * silJP);
+    const samplesSilEN = Math.floor(OUTPUT_SAMPLE_RATE * silEN);
+    const totalSamples = samplesJP + samplesSilJP + samplesEN + samplesSilEN;
+    
+    // 結合用の新しいAudioBufferを作成
+    const finalBuffer = audioCtx.createBuffer(1, totalSamples, OUTPUT_SAMPLE_RATE);
+    const finalData = finalBuffer.getChannelData(0);
+    
+    // 順に流し込む（無音部分は最初から0で初期化されているので飛ばすだけでOK）
+    finalData.set(audioBufJP.getChannelData(0), 0);
+    finalData.set(audioBufEN.getChannelData(0), samplesJP + samplesSilJP);
+    
+    // WAVバイナリの生成
+    const wavBuffer = createWavFile(finalBuffer);
 
-    const blob = new Blob([wav], { type: "audio/wav" });
+    const blob = new Blob([wavBuffer], { type: "audio/wav" });
     const url  = URL.createObjectURL(blob);
     player.src = url;
     player.style.display = "block";
@@ -191,16 +243,19 @@ async function generate() {
     a.download = `loop_taiko_${voiceJP}_${voiceEN}.wav`;
     a.click();
 
-    const durJP = (pcmJP.length / 2 / SAMPLE_RATE).toFixed(1);
-    const durEN = (pcmEN.length / 2 / SAMPLE_RATE).toFixed(1);
-    const total = (totalLen / 2 / SAMPLE_RATE).toFixed(1);
+    const durJP = audioBufJP.duration.toFixed(1);
+    const durEN = audioBufEN.duration.toFixed(1);
+    const total = finalBuffer.duration.toFixed(1);
     status.style.color = "#2a7a4b";
     status.textContent = `完成！\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒／ループ`;
   } catch(e) {
     status.style.color = "#c0392b";
     status.textContent = `エラー: ${e.message}`;
+    console.error(e);
+  } finally {
+    audioCtx.close();
+    btn.disabled = false;
   }
-  btn.disabled = false;
 }
 </script>
 </body>
