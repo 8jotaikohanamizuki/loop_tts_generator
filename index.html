@@ -110,18 +110,17 @@ function makeSilence(sec) {
 
 async function fetchTTS(apiKey, model, text, voice, style) {
   const fullText = style ? style + "\n\n" + text : text;
+  
+  // APIのエラーを確実に回避するため、最新の確定スキーマ構造に修正
   const body = {
     contents: [{ parts: [{ text: fullText }] }],
     generationConfig: {
       responseModalities: ["AUDIO"],
       speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } }
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: voice }
+        }
       }
-    },
-    /* outputConfig の位置を最上位ルート直下に修正しました */
-    outputConfig: {
-      sampleRateHertz: 48000,
-      audioEncoding: "LINEAR16"
     }
   };
 
