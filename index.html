@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>サンプラー用のアナウンス文生成ツール</title>
+<title>サンプラー用のアナウンス文生成ツール (強制48kHz変換版)</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif; background: #f5f4f0; color: #1a1a1a; padding: 2rem; }
@@ -24,7 +24,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>🥁 サンプラー用のアナウンス文生成ツール (48kHz専用)</h1>
+  <h1>🥁 サンプラー用のアナウンス文生成ツール (確実な48kHz出力)</h1>
 
   <div class="field">
     <label>Gemini API キー</label>
@@ -89,8 +89,8 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
-// ご指定通り、機材対応の48kHz (48000Hz) に固定
-const SAMPLE_RATE = 48000;
+// 出力するWAVの仕様（48kHzに完全固定）
+const TARGET_SAMPLE_RATE = 48000;
 
 function makeWavHeader(dataLen) {
   const buf = new ArrayBuffer(44);
@@ -99,20 +99,36 @@ function makeWavHeader(dataLen) {
   w(0,"RIFF"); v.setUint32(4,36+dataLen,true);
   w(8,"WAVE"); w(12,"fmt ");
   v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
-  v.setUint32(24,SAMPLE_RATE,true); v.setUint32(28,SAMPLE_RATE*2,true);
+  v.setUint32(24,TARGET_SAMPLE_RATE,true); v.setUint32(28,TARGET_SAMPLE_RATE*2,true);
   v.setUint16(32,2,true); v.setUint16(34,16,true);
   w(36,"data"); v.setUint32(40,dataLen,true);
   return new Uint8Array(buf);
 }
 
 function makeSilence(sec) {
-  return new Uint8Array(Math.floor(SAMPLE_RATE * sec) * 2);
+  return new Uint8Array(Math.floor(TARGET_SAMPLE_RATE * sec) * 2);
+}
+
+// APIが返してきた24kHzのPCMデータを、再生速度を変えずに48kHzへ引き伸ばす関数
+function convert24kHzTo48kHz(pcm24) {
+  const samples = pcm24.length / 2;
+  const pcm48 = new Uint8Array(pcm24.length * 2);
+  const view24 = new DataView(pcm24.buffer, pcm24.byteOffset, pcm24.length);
+  const view48 = new DataView(pcm48.buffer, pcm48.byteOffset, pcm48.length);
+  
+  for (let i = 0; i < samples; i++) {
+    const val = view24.getInt16(i * 2, true);
+    // 1つのサンプルデータを2回連続で書き込むことで、ピッチを変えずにデータ量を48kHz化
+    view48.setInt16(i * 4, val, true);
+    view48.setInt16(i * 4 + 2, val, true);
+  }
+  return pcm48;
 }
 
 async function fetchTTS(apiKey, model, text, voice, style) {
   const fullText = style ? style + "\n\n" + text : text;
   
-  // 48kHz / LINEAR16 を要求する正しいAPIスキーマ（audioConfig）
+  // エラーの原因になる設定は付けず、APIの標準（24kHz）で素直に受け取る
   const body = {
     contents: [{ parts: [{ text: fullText }] }],
     generationConfig: {
@@ -120,10 +136,6 @@ async function fetchTTS(apiKey, model, text, voice, style) {
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: voice }
-        },
-        audioConfig: {
-          sampleRateHertz: SAMPLE_RATE,
-          audioEncoding: "LINEAR16"
         }
       }
     }
@@ -137,10 +149,13 @@ async function fetchTTS(apiKey, model, text, voice, style) {
   if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
   const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   if (!b64) throw new Error("音声データが返ってきませんでした");
+  
   const bin = atob(b64);
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr;
+  
+  // ここでフロントエンド側で強制的に48kHzへ変換！
+  return convert24kHzTo48kHz(arr);
 }
 
 async function generate() {
@@ -161,13 +176,13 @@ async function generate() {
   status.style.color = "#666";
 
   try {
-    status.textContent = "① 日本語音声を生成中(48kHz)...";
+    status.textContent = "① 日本語音声を生成中...";
     const pcmJP = await fetchTTS(apiKey, model, textJP, voice, style);
 
-    status.textContent = "② 英語音声を生成中(48kHz)...";
+    status.textContent = "② 英語音声を生成中...";
     const pcmEN = await fetchTTS(apiKey, model, textEN, voice, style);
 
-    status.textContent = "③ WAVファイルを結合中...";
+    status.textContent = "③ 48kHz WAVファイルを結合中...";
     const silA = makeSilence(silJP);
     const silB = makeSilence(silEN);
     const totalLen = pcmJP.length + silA.length + pcmEN.length + silB.length;
@@ -190,11 +205,11 @@ async function generate() {
     a.download = `announcement_48k_${voice}.wav`;
     a.click();
 
-    const durJP = (pcmJP.length / 2 / SAMPLE_RATE).toFixed(1);
-    const durEN = (pcmEN.length / 2 / SAMPLE_RATE).toFixed(1);
-    const total = (totalLen / 2 / SAMPLE_RATE).toFixed(1);
+    const durJP = (pcmJP.length / 2 / TARGET_SAMPLE_RATE).toFixed(1);
+    const durEN = (pcmEN.length / 2 / TARGET_SAMPLE_RATE).toFixed(1);
+    const total = (totalLen / 2 / TARGET_SAMPLE_RATE).toFixed(1);
     status.style.color = "#2a7a4b";
-    status.textContent = `完成！(48kHz)\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒／ループ`;
+    status.textContent = `完成！\n強制48kHz変換に成功しました。\nJP ${durJP}秒 ＋ 無音${silJP}秒 ＋ EN ${durEN}秒 ＋ 無音${silEN}秒 ＝ 合計 ${total}秒／ループ`;
   } catch(e) {
     status.style.color = "#c0392b";
     status.textContent = `エラー: ${e.message}`;
