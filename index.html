@@ -89,7 +89,7 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
-const SAMPLE_RATE = 24000;
+const SAMPLE_RATE = 48000;
 
 function makeWavHeader(dataLen) {
   const buf = new ArrayBuffer(44);
@@ -114,7 +114,10 @@ async function fetchTTS(apiKey, model, text, voice, style) {
     contents: [{ parts: [{ text: fullText }] }],
     generationConfig: {
       responseModalities: ["AUDIO"],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
+        outputConfig: { sampleRateHertz: 48000, audioEncoding: "LINEAR16" }
+      }
     }
   };
 
