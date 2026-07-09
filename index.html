@@ -89,7 +89,8 @@ Please feel free to join us.</textarea>
 </div>
 
 <script>
-const SAMPLE_RATE = 48000;
+// Gemini APIの音声出力は標準で 24000Hz (24kHz) の LINEAR16 PCM が返されます
+const SAMPLE_RATE = 24000;
 
 function makeWavHeader(dataLen) {
   const buf = new ArrayBuffer(44);
@@ -111,7 +112,7 @@ function makeSilence(sec) {
 async function fetchTTS(apiKey, model, text, voice, style) {
   const fullText = style ? style + "\n\n" + text : text;
   
-  // APIのエラーを確実に回避するため、最新の確定スキーマ構造に修正
+  // 原因だった outputConfig を完全に削除し、極限までシンプルにしました
   const body = {
     contents: [{ parts: [{ text: fullText }] }],
     generationConfig: {
