@@ -115,9 +115,9 @@ async function fetchTTS(apiKey, model, text, voice, style) {
     generationConfig: {
       responseModalities: ["AUDIO"],
       speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
-        outputConfig: { sampleRateHertz: 48000, audioEncoding: "LINEAR16" }
-      }
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } }
+      },
+      outputConfig: { sampleRateHertz: 48000, audioEncoding: "LINEAR16" }
     }
   };
 
